@@ -1,0 +1,696 @@
+//
+//  DresserMainViewController.m
+//  Love
+//
+//  Created by use on 15-4-8.
+//  Copyright (c) 2015年 HaiTao. All rights reserved.
+//
+
+#import "DresserMainViewController.h"
+#import "ShareProductDetailViewController.h"
+#import "UserHomeViewController.h"
+
+#import "DresserHomePageModel.h"
+#import "FollowMeModel.h"
+#import "UserManager.h"
+#import "CommentReplayModel.h"
+#import "SVProgressHUD.h"
+
+#import "LOVWriteCommentView.h"
+#import "BigImageViewController.h"
+#import "CommentViewController.h"
+#import "LOVShareActivityView.h"
+#import "LoginViewController.h"
+#import "UIImage+Additions.h"
+#import "UIFont+boldFontOtherFont.h"
+#import "LOVCircle.h"
+#import "LOVPhotoScrollView.h"
+
+@interface DresserMainViewController ()<UITableViewDataSource,UITableViewDelegate,LOVPhotoScrollViewDelegate,UITextFieldDelegate,LOVWriteCommentViewDelegate>
+{
+    CGFloat height;
+    CGPoint tableViewContentOffset;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSMutableArray *dataArray;
+@property (nonatomic, strong) NSMutableArray *imageArray;
+@property (nonatomic, strong) NSMutableArray *discussArray;
+@property (nonatomic, strong) NSMutableArray *productArray;
+
+@property (nonatomic, strong) NSString *myDescription;//直播简介
+@property (nonatomic, strong) NSString *discussNum;
+@property (nonatomic, strong) NSString *headerPath;
+@property (nonatomic, strong) NSString *intro;
+@property (nonatomic, strong) NSString *isAttention;
+@property (nonatomic, strong) NSString *isLove;
+@property (nonatomic, strong) NSString *liveName;
+@property (nonatomic, strong) NSString *location;
+@property (nonatomic, strong) NSString *tagName;
+@property (nonatomic, strong) NSString *userId;
+@property (nonatomic, strong) NSString *userName;
+
+@property (nonatomic, strong) UIButton *likeButton;
+@property (nonatomic, strong) UIButton *commityButton;
+@property (nonatomic, strong) UIButton *shareButton;
+
+@property (nonatomic, strong) LOVPhotoScrollView *photoScrollView;
+@property (nonatomic, strong) LOVWriteCommentView *writeCommentView;
+@end
+
+@implementation DresserMainViewController
+
+#pragma mark -- LOVWriteCommentViewDelegate
+- (void)postCommentContent:(NSString *)content{
+    NSString *sig = [UserManager readSig];
+    if ([sig length] > 0){
+        if ([content length] > 0) {
+            [CommentReplayModel postLiveRepalyItemLiveId:_liveID content:content block:^(int code) {
+                UIAlertView *alertView = nil;
+                if (code == 0) {
+                    alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                           message:@"发送失败"
+                                                          delegate:self
+                                                 cancelButtonTitle:MyLocalizedString(@"返回")
+                                                 otherButtonTitles:nil];
+                    alertView.tag = 111;
+                    alertView.delegate = self;
+                    [alertView show];
+                }
+                if (code == 1) {
+                    [_writeCommentView hiddenViewAction];
+                    [DresserHomePageModel getDresserLiveDataWithLiveId:_liveID block:^(NSDictionary *dic) {
+                        _discussArray = [dic objectForKey:@"live_discuss"];
+                        [self reloadTableViewData];
+                    }];
+                }
+            }];
+        }else{
+            UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                                message:@"请填写评论"
+                                                               delegate:self
+                                                      cancelButtonTitle:MyLocalizedString(@"返回")
+                                                      otherButtonTitles:nil];
+            [alertView show];
+        }
+        
+    }else{
+        [_writeCommentView closeKeyboard];
+        LoginViewController *loginController = [[LoginViewController alloc] initWithNibName:@"LoginViewController" bundle:nil];
+        [self.navigationController pushViewController:loginController animated:YES];
+    }
+
+}
+- (void)cancelWirteComment{
+    [_writeCommentView hiddenViewAction];
+}
+#pragma mark --LOVPhotoScrollViewDelegate
+- (void)getImageViewTag:(NSInteger)tag
+{
+    if ([_imageArray count] > 0) {
+        BigImageViewController *bigImageVC = [[BigImageViewController alloc] init];
+        [bigImageVC getImageArray:_imageArray selectedImageViewTag:tag];
+        [self presentViewController:bigImageVC animated:YES completion:nil];
+    }
+}
+
+
+
+- (instancetype)init{
+    if (self = [super init]) {
+        _dataArray = [[NSMutableArray alloc] init];
+        _imageArray = [[NSMutableArray alloc] init];
+        _discussArray = [[NSMutableArray alloc] init];
+        _productArray = [[NSMutableArray alloc] init];
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title = @"美妆师";
+    // Do any additional setup after loading the view.
+    [self reloadTableViewData];
+}
+
+- (void)reloadTableViewData{
+    [DresserHomePageModel getDresserLiveDataWithLiveId:_liveID block:^(NSDictionary *dic) {
+        NSDictionary *liveInfo = [dic objectForKey:@"live_info"];
+        _imageArray = [[dic objectForKey:@"live_info"] objectForKey:@"img"];
+        _discussArray = [dic objectForKey:@"live_discuss"];
+        _productArray = [dic objectForKey:@"recom_product"];
+        
+        _myDescription = [liveInfo objectForKey:@"description"];
+        _discussNum = [liveInfo objectForKey:@"discuss_num"];
+        _headerPath = [liveInfo objectForKey:@"header"];
+        _intro = [liveInfo objectForKey:@"intro"];
+        _isAttention = [liveInfo objectForKey:@"is_attention"];
+        _isLove = [liveInfo objectForKey:@"is_love"];
+        _liveName = [liveInfo objectForKey:@"live_name"];
+        _location = [liveInfo objectForKey:@"location"];
+        _tagName = [liveInfo objectForKey:@"tag_name"];
+        _userId = [liveInfo objectForKey:@"user_id"];
+        _userName = [liveInfo objectForKey:@"user_name"];
+        
+//        [self.tableView reloadData];
+        [self reloadTableView];
+    }];
+}
+
+- (void)reloadTableView{
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, kScreenHeight - 64) style:UITableViewStylePlain];
+    _tableView.dataSource = self;
+    _tableView.delegate = self;
+    _tableView.showsVerticalScrollIndicator = NO;
+    _tableView.showsHorizontalScrollIndicator = NO;
+    [self.view addSubview:_tableView];
+    _tableView.contentOffset = tableViewContentOffset;
+}
+
+#pragma mark --UITableViewDataSource
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{
+    return 5;
+}
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+    if (section == 0) {
+        return 0;
+    }
+    if (section == 1) {
+        return 0;
+    }
+    if (section == 2) {
+        return 1;
+    }
+    if (section == 3) {
+        if ([_productArray count] > 0) {
+            return [_productArray count];
+        }else{
+            return 1;
+        }
+    }
+    if (section == 4) {
+        if ([_discussArray count] > 0) {
+            return [_discussArray count] + 1;
+        }else{
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    if (indexPath.section == 2) {
+        static NSString * cellID1 = @"cellID1";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID1];
+        if (cell == nil) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID1];
+        }
+        for (UIView * vi in cell.contentView.subviews) {
+            [vi removeFromSuperview];
+        }
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(8, 0, kScreenWidth - 16, height)];
+        if (_myDescription.length> 0) {
+            label.text = [NSString stringWithFormat:@"  %@",_myDescription];
+            label.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6];
+            label.numberOfLines = 0;
+            label.font = [UIFont systemFontOfSize:14.f];
+        }else{
+            label.text = @"美妆师太懒，没有写商品详情！";
+        }
+        [cell.contentView addSubview:label];
+        return cell;
+    }
+    if (indexPath.section == 3) {
+        static NSString *cellID2 = @"cellID2";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID2];
+        if (cell == nil) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID2];
+        }
+        for (UIView * vi in cell.contentView.subviews) {
+            [vi removeFromSuperview];
+        }
+        if ([_productArray count] > 0) {
+            NSDictionary *productDic = _productArray[indexPath.row];
+            LOVCircle *imageView = [[LOVCircle alloc] initWithFrame:CGRectMake(5, 5, 40, 40) imageWithPath:[productDic objectForKey:@"thumb"] placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            [cell.contentView addSubview:imageView];
+            
+            UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 5, kScreenWidth - 80, 20)];
+            nameLabel.textColor = [UIColor colorRGBWithRed:147 green:194 blue:214 alpha:1];
+            nameLabel.text = [productDic objectForKey:@"name"];
+            [cell.contentView addSubview:nameLabel];
+            
+            UILabel *priceLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 30, kScreenWidth - 70, 25)];
+            priceLabel.font = [UIFont systemFontOfSize:17.f];
+            NSString *priceStr = [productDic objectForKey:@"price"];
+            priceLabel.text = [NSString stringWithFormat:@"￥%@",priceStr];
+            priceLabel.textColor = [UIColor redColor];
+            [cell.contentView addSubview:priceLabel];
+            
+            cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+            cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        }else{
+            cell.textLabel.text = @"还没有关联商品";
+        }
+        return cell;
+    }
+    if (indexPath.section == 4) {
+        static NSString *cellID3 = @"cellID3";
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID3];
+        if (cell == nil) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID3];
+        }
+        for (UIView * vi in cell.contentView.subviews) {
+            [vi removeFromSuperview];
+        }
+        if ([_discussArray count] > 0) {
+            if (indexPath.row < [_discussArray count]){
+                NSDictionary *commityDic = _discussArray[indexPath.row];
+                LOVCircle *circle = [[LOVCircle alloc] initWithFrame:CGRectMake(5, 15, 40, 40) imageWithPath:[commityDic objectForKey:@"header"] placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+                [cell.contentView addSubview:circle];
+                
+                UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 10, kScreenWidth - 70, 20)];
+                nameLabel.textColor = [UIColor colorRGBWithRed:147 green:194 blue:214 alpha:1];
+                nameLabel.text = [commityDic objectForKey:@"name"];
+                [cell.contentView addSubview:nameLabel];
+                
+                UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 30, kScreenWidth - 70, 10)];
+                timeLabel.font = [UIFont systemFontOfSize:12.f];
+                timeLabel.text = [commityDic objectForKey:@"create_time"];
+                [cell.contentView addSubview:timeLabel];
+                
+                UILabel *content = [[UILabel alloc] initWithFrame:CGRectMake(60, 40, kScreenWidth - 70, 60)];
+                content.numberOfLines = 0;
+                content.text = [commityDic objectForKey:@"content"];
+                content.font = [UIFont systemFontOfSize:15.f];
+                [cell.contentView addSubview:content];
+            }else if (indexPath.row == [_discussArray count]){
+                cell.textLabel.text = @"查看更多评论>>";
+                cell.textLabel.textColor = [UIColor blackColor];
+                cell.textLabel.textAlignment = NSTextAlignmentCenter;
+            }
+        }else{
+            cell.textLabel.text = @"还没有评论";
+        }
+        cell.selectionStyle = UITableViewCellSelectionStyleNone;
+        return cell;
+    }
+    
+    return nil;
+}
+#pragma mark --UITableViewDelegate
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    if (indexPath.section == 2) {
+        if (_myDescription.length> 0) {
+            CGSize constraint = CGSizeMake(kScreenWidth, 20000.0f);
+            CGSize size = [_myDescription boundingRectWithSize:constraint options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:18.f]} context:nil].size;
+            
+            CGFloat myheight = MAX(size.height, 44.0f);
+            height = myheight;
+            return height;
+        }else{
+            return 44;
+        }
+    }
+    if (indexPath.section == 3) {
+        return 60.f;
+    }
+    if (indexPath.section == 4) {
+        if (indexPath.row == [_discussArray count]) {
+            return 42;
+        }
+        return 100;
+    }
+    return 0;
+}
+
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section{
+    if (section == 0) {
+        return 85;
+    }
+    if (section == 1) {
+        return 365;
+    }
+    if (section == 2) {
+        return 44;
+    }
+    if (section == 3) {
+        return 44;
+    }
+    if (section == 4) {
+        return 44;
+    }
+    return 0;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForFooterInSection:(NSInteger)section{
+    if (section == 4) {
+        return 45;
+    }
+    return 0;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section{
+    if (section == 0) {
+        UIView *sectionOne = [[UIView alloc] init];
+        sectionOne.backgroundColor = [UIColor whiteColor];
+        
+        UIView *headerView = [[UIView alloc] initWithFrame:CGRectMake(15, 15, 45, 45)];
+        [sectionOne addSubview:headerView];
+        LOVCircle *circle = [[LOVCircle alloc] initWithFrame:CGRectMake(0, 0, 45, 45) imageWithPath:_headerPath placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+        [headerView addSubview:circle];
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(userHeaderAction:)];
+        [headerView addGestureRecognizer:tap];
+        
+        UILabel *nameLabel = [[UILabel alloc] initWithFrame:CGRectMake(75, 10, kScreenWidth - 185, 20)];
+        nameLabel.text = _userName;
+        nameLabel.font = [UIFont lovFontWitnSize:15 IsBold:YES];
+        [sectionOne addSubview:nameLabel];
+        
+        UILabel *introLabel = [[UILabel alloc] initWithFrame:CGRectMake(75, 35, kScreenWidth - 185, 20)];
+        introLabel.text = _intro;
+        introLabel.font = [UIFont lovFontWitnSize:12 IsBold:NO];
+        introLabel.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.8];
+        [sectionOne addSubview:introLabel];
+        
+        UIButton *followButton = [[UIButton alloc] initWithFrame:CGRectMake(kScreenWidth - 100, 23, 90, 30)];
+        if ([_isAttention isEqual:@"0"]) {
+            [followButton setTitle:@"+关注" forState:UIControlStateNormal];
+            [followButton setBackgroundColor:[UIColor colorRGBWithRed:231 green:63 blue:107 alpha:1]];
+            [followButton setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+        }else{
+            followButton.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+            followButton.layer.borderWidth = 1.f;
+            [followButton setTitle:@"√已关注" forState:UIControlStateNormal];
+            [followButton setBackgroundColor:[UIColor clearColor]];
+            [followButton setTitleColor:[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6] forState:UIControlStateNormal];
+            followButton.userInteractionEnabled = NO;
+        }
+        followButton.layer.masksToBounds = YES;
+        followButton.layer.cornerRadius = 3.f;
+        [followButton addTarget:self action:@selector(followAction:) forControlEvents:UIControlEventTouchUpInside];
+        followButton.titleLabel.font = [UIFont lovFontWitnSize:14 IsBold:NO];
+        [sectionOne addSubview:followButton];
+        
+        UIImageView *locationIcon = [[UIImageView alloc] initWithFrame:CGRectMake(15, 68, 12, 15)];
+        locationIcon.image = [UIImage imageNamed:@"icon_location"];
+        [sectionOne addSubview:locationIcon];
+        
+        UILabel *locationLabel = [[UILabel alloc] initWithFrame:CGRectMake(35, 65, kScreenWidth - 45, 20)];
+        locationLabel.text = _location;
+        locationLabel.font = [UIFont systemFontOfSize:12.f];
+        locationLabel.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6];
+        [sectionOne addSubview:locationLabel];
+        
+        return sectionOne;
+    }
+    if (section == 1) {
+        UIView *sectionTwo = [[UIView alloc] init];
+        sectionTwo.backgroundColor = [UIColor whiteColor];
+
+        UIView *backView = [[UIView alloc] initWithFrame:CGRectMake(5, 10, kScreenWidth - 10, 350)];
+        backView.backgroundColor = [UIColor whiteColor];
+        backView.layer.masksToBounds = YES;
+        backView.layer.cornerRadius = 3.f;
+        backView.layer.borderColor = [[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.1] CGColor];
+        backView.layer.borderWidth = 1.f;
+        [sectionTwo addSubview:backView];
+        
+        _photoScrollView = [[LOVPhotoScrollView alloc] initWithFrame:CGRectMake(5, 5, backView.frame.size.width - 10, backView.frame.size.height - 45)];
+        _photoScrollView.delegate = self;
+        [backView addSubview:_photoScrollView];
+        
+        NSLog(@"%@",_photoScrollView);
+        
+        [_photoScrollView setImagePathArray:_imageArray];
+        
+        UILabel *tagLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, backView.frame.size.height - 25 - 35, 40, 15)];
+        tagLabel.backgroundColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.3];
+        tagLabel.font = [UIFont systemFontOfSize:14.f];
+        tagLabel.textColor = [UIColor whiteColor];
+        tagLabel.text = [NSString stringWithFormat:@"#%@",_tagName];
+        [backView addSubview:tagLabel];
+        
+        _likeButton = [[UIButton alloc] initWithFrame:CGRectMake(0, backView.frame.size.height - 35, backView.frame.size.width/3, 35)];
+        _likeButton.backgroundColor = [UIColor clearColor];
+        if ([_isLove isEqual:@"0"]) {
+            [_likeButton setTitle:@"喜欢" forState:UIControlStateNormal];
+            [_likeButton setTitleColor:[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:1] forState:UIControlStateNormal];
+            [_likeButton setImage:[UIImage imageNamed:@"commission_like"] forState:UIControlStateNormal];
+            _likeButton.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 25);
+        }else{
+            [_likeButton setTitle:@"已喜欢" forState:UIControlStateNormal];
+            [_likeButton setTitleColor:[UIColor colorRGBWithRed:233 green:60 blue:103 alpha:1] forState:UIControlStateNormal];
+            [_likeButton setImage:[UIImage imageNamed:@"icon_selectIcon"] forState:UIControlStateNormal];
+            _likeButton.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 20);
+//            _likeButton.userInteractionEnabled = NO;
+        }
+        _likeButton.layer.borderColor = [[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.1] CGColor];
+        _likeButton.layer.borderWidth = 0.5;
+        [_likeButton addTarget:self action:@selector(likeButtonAction:) forControlEvents:UIControlEventTouchUpInside];
+        [backView addSubview:_likeButton];
+        
+        _commityButton = [[UIButton alloc] initWithFrame:CGRectMake(backView.frame.size.width/3, backView.frame.size.height - 35, backView.frame.size.width/3, 35)];
+        _commityButton.backgroundColor = [UIColor clearColor];
+        [_commityButton setTitle:@"评论" forState:UIControlStateNormal];
+        [_commityButton setImage:[UIImage imageNamed:@"commission_comment"] forState:UIControlStateNormal];
+        _commityButton.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 25);
+        [_commityButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        _commityButton.layer.borderColor = [[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.1] CGColor];
+        _commityButton.layer.borderWidth = 0.5;
+        [_commityButton addTarget:self action:@selector(commityButtonAction:) forControlEvents:UIControlEventTouchUpInside];
+        [backView addSubview:_commityButton];
+        
+        _shareButton = [[UIButton alloc] initWithFrame:CGRectMake(backView.frame.size.width/3*2, backView.frame.size.height - 35, backView.frame.size.width/3, 35)];
+        _shareButton.backgroundColor = [UIColor clearColor];
+        [_shareButton setTitle:@"分享" forState:UIControlStateNormal];
+        [_shareButton setImage:[UIImage imageNamed:@"commission_share"] forState:UIControlStateNormal];
+        _shareButton.imageEdgeInsets = UIEdgeInsetsMake(0, 0, 0, 25);
+        [_shareButton setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        _shareButton.layer.borderColor = [[UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.1] CGColor];
+        _shareButton.layer.borderWidth = 0.5;
+        [_shareButton addTarget:self action:@selector(shareButtonAction:) forControlEvents:UIControlEventTouchUpInside];
+        [backView addSubview:_shareButton];
+        
+        return sectionTwo;
+    }
+    if (section == 2) {
+        UIView *sectionThree = [[UIView alloc] init];
+        sectionThree.backgroundColor = [UIColor whiteColor];
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 5, kScreenWidth, 44)];
+        titleLabel.text = _liveName;
+        titleLabel.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6];
+        [sectionThree addSubview:titleLabel];
+        
+        return sectionThree;
+    }
+    if (section == 3) {
+        UIView *sectionFour = [[UIView alloc] init];
+        sectionFour.backgroundColor = [UIColor whiteColor];
+        UILabel *titleLabel = [[UILabel alloc] initWithFrame:CGRectMake(10, 0, kScreenWidth, 44)];
+        titleLabel.text = @"关联商品";
+        titleLabel.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6];
+        titleLabel.font = [UIFont systemFontOfSize:18];
+        [sectionFour addSubview:titleLabel];
+        
+        UIView *lineView1 = [[UIView alloc] initWithFrame:CGRectMake(8, 1, kScreenWidth - 8, 0.5)];
+        lineView1.backgroundColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.3];
+        [sectionFour addSubview:lineView1];
+        
+        UIView *lineView2 = [[UIView alloc] initWithFrame:CGRectMake(8, 43, kScreenWidth - 8, 0.5)];
+        lineView2.backgroundColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.3];
+        [sectionFour addSubview:lineView2];
+        
+        return sectionFour;
+    }
+    if (section == 4) {
+        UIView *sectionFive = [[UIView alloc] init];
+        sectionFive.backgroundColor = [UIColor whiteColor];
+        
+        UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 12, 22, 20)];
+        imageView.backgroundColor = [UIColor clearColor];
+        imageView.image = [UIImage imageNamed:@"icon_discuss"];
+        [sectionFive addSubview:imageView];
+        
+        UILabel *myLabel = [[UILabel alloc] initWithFrame:CGRectMake(imageView.frame.origin.x + 30, 0, 165, 44)];
+        myLabel.backgroundColor = [UIColor whiteColor];
+        myLabel.text = [NSString stringWithFormat:@"累计评价（%@）",_discussNum];
+        myLabel.textColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.6];
+        myLabel.font = [UIFont systemFontOfSize:16];
+        [sectionFive addSubview:myLabel];
+
+        UIView *lineView1 = [[UIView alloc] initWithFrame:CGRectMake(8, 1, kScreenWidth - 8, 0.5)];
+        lineView1.backgroundColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.3];
+        [sectionFive addSubview:lineView1];
+        
+        UIView *lineView2 = [[UIView alloc] initWithFrame:CGRectMake(8, 43, kScreenWidth - 8, 0.5)];
+        lineView2.backgroundColor = [UIColor colorRGBWithRed:0 green:0 blue:0 alpha:0.3];
+        [sectionFive addSubview:lineView2];
+        return sectionFive;
+    }
+    return nil;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForFooterInSection:(NSInteger)section{
+    if (section == 4) {
+        UIView *footerView = [[UIView alloc] init];
+        footerView.backgroundColor = [UIColor colorRGBWithRed:251 green:251 blue:251 alpha:1];
+        
+        UIButton *button = [[UIButton alloc] initWithFrame:CGRectMake(kScreenWidth - 90, 5, 80, 35)];
+        [button addTarget:self action:@selector(discussAction:) forControlEvents:UIControlEventTouchUpInside];
+        [button setTitle:@"评论" forState:UIControlStateNormal];
+        [button setTitleColor:[UIColor blackColor] forState:UIControlStateNormal];
+        button.backgroundColor = [UIColor whiteColor];
+        button.layer.masksToBounds = YES;
+        button.layer.cornerRadius = 3.f;
+        button.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+        button.layer.borderWidth = 1.f;
+        [footerView addSubview:button];
+        
+        UITextField *textField = [[UITextField alloc] initWithFrame:CGRectMake(8, 5, kScreenWidth - 100, 35)];
+        textField.backgroundColor = [UIColor whiteColor];
+        //        textField.borderStyle = UITextBorderStyleLine;
+        textField.placeholder = @" 您想说点什么";
+        textField.font = [UIFont systemFontOfSize:15.f];
+        textField.layer.masksToBounds = YES;
+        textField.layer.cornerRadius = 3.f;
+        textField.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+        textField.layer.borderWidth = 1.f;
+        textField.delegate = self;
+        [footerView addSubview:textField];
+
+        
+        return footerView;
+    }
+    return nil;
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    if (indexPath.section == 3) {
+        if ([_productArray count] > 0) {
+        ShareProductDetailViewController *shareProductDetail = [[ShareProductDetailViewController alloc] init];
+        shareProductDetail.productId = [_productArray[indexPath.row] objectForKey:@"id"];
+        shareProductDetail.productName = [_productArray[indexPath.row] objectForKey:@"name"];
+        [shareProductDetail reloadTheDataWithShare:NO];
+        [self.navigationController pushViewController:shareProductDetail animated:YES];
+        }else{
+            [SVProgressHUD showErrorWithStatus:@"未关联商品"];
+        }
+    }
+    if (indexPath.section == 4 && indexPath.row == [_discussArray count]) {
+        CommentViewController *commentVC = [[CommentViewController alloc] init];
+        //    commentVC.isShare = YES;
+        //    commentVC.shareId = _shareId;
+        commentVC.liveId = _liveID;
+        commentVC.totleDiscussNum = _discussNum;
+        commentVC.commentStatu = MyCommentStatusDresser;
+        commentVC.dresserName = _userName;
+        [self.navigationController pushViewController:commentVC animated:YES];
+    }
+}
+
+
+#pragma mark -- 关注事件
+- (void)followAction:(UIButton *)sender{
+    NSLog(@"关注");
+    NSString *sig = [UserManager readSig];
+    if (sig.length > 0) {
+        [FollowMeModel doFollowWithId:_userId type:5 block:^(int code) {
+            if (code == 1) {
+                _isAttention = @"1";
+               [self reloadTableView];
+            }
+        }];
+    }else{
+        LoginViewController *loginView = [[LoginViewController alloc] init];
+        [self.navigationController pushViewController:loginView animated:YES];
+    }
+}
+#pragma mark -- 喜欢事件
+- (void)likeButtonAction:(UIButton *)sender{
+    NSLog(@"喜欢");
+    NSString *sig = [UserManager readSig];
+    if (sig.length > 0) {
+        [FollowMeModel doFollowLive:_liveID block:^(int code) {
+            if (code == 1) {
+                _isLove = @"1";
+                [self reloadTableView];
+            }else{
+                _isLove = @"0";
+                [self reloadTableView];
+            }
+        }];
+    }else{
+        LoginViewController *loginView = [[LoginViewController alloc] init];
+        [self.navigationController pushViewController:loginView animated:YES];
+    }
+}
+#pragma mark -- 评论事件
+- (void)commityButtonAction:(UIButton *)sender{
+    NSLog(@"评论");
+    CommentViewController *commentVC = [[CommentViewController alloc] init];
+    commentVC.liveId = _liveID;
+    commentVC.totleDiscussNum = _discussNum;
+    commentVC.commentStatu = MyCommentStatusDresser;
+    commentVC.dresserName = _userName;
+    [self.navigationController pushViewController:commentVC animated:YES];
+}
+#pragma mark -- 分享事件
+- (void)shareButtonAction:(UIButton *)sender{
+    NSLog(@"分享");
+    LOVShareActivityView *shareView = [[LOVShareActivityView alloc] initWithShareType:LOVShareTypeSinaWeibo shareTitle:_liveName shareDesc:_intro shareURL:[NSString stringWithFormat:@"%@%@",kShareDresserURL,_liveID] shareImageURL:nil];
+    [shareView show];
+}
+
+#pragma mark -- 发表评论
+- (void)discussAction:(UIButton *)sender{
+    NSLog(@"发表评论");
+    //---写评论页面
+    _writeCommentView = [[LOVWriteCommentView alloc] init];
+    _writeCommentView.alpha = 1.f;
+    [_writeCommentView showWirteView];
+    _writeCommentView.delegate = self;
+    [self.view addSubview:_writeCommentView];
+}
+
+#pragma mark -- textfieldDelegate
+- (BOOL)textFieldShouldBeginEditing:(UITextField *)textField{
+    //---写评论页面
+    _writeCommentView = [[LOVWriteCommentView alloc] init];
+    _writeCommentView.alpha = 1.f;
+    [_writeCommentView showWirteView];
+    _writeCommentView.delegate = self;
+    [self.view addSubview:_writeCommentView];
+    return NO;
+}
+
+-(void)scrollViewDidScroll:(UIScrollView *)scrollView{
+    if (scrollView == _tableView) {
+        tableViewContentOffset = _tableView.contentOffset;
+    }
+}
+
+- (void)userHeaderAction:(UITapGestureRecognizer *)tap{
+    UserHomeViewController *userHomeVC = [[UserHomeViewController alloc] init];
+    userHomeVC.userId = _userId;
+    userHomeVC.userName = _userName;
+    [self.navigationController pushViewController:userHomeVC animated:YES];
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+/*
+#pragma mark - Navigation
+
+// In a storyboard-based application, you will often want to do a little preparation before navigation
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+    // Get the new view controller using [segue destinationViewController].
+    // Pass the selected object to the new view controller.
+}
+*/
+
+@end

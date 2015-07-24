@@ -1,0 +1,623 @@
+//
+//  OrderConfirmationViewController.m
+//  Love
+//
+//  Created by use on 15-1-19.
+//  Copyright (c) 2015年 HaiTao. All rights reserved.
+//
+
+#import "OrderConfirmationViewController.h"
+#import "UIImageView+WebCache.h"
+#import "SKUModel.h"
+#import "ReciveAdressModel.h"
+#import "AddressManagerController.h"
+#import "PayViewController.h"
+
+#import "ReciveAdressModel.h"
+#import "RebateAndBaaiIconModel.h"
+#import "SubmitOrderModel.h"
+#import "WXPayModel.h"
+
+#import "LOVWXPayClient.h"
+
+@interface OrderConfirmationViewController ()<UITableViewDataSource,UITableViewDelegate, GetAddressDelegate, UITextFieldDelegate, UIActionSheetDelegate>
+{
+    float price;
+    int folder[100];
+}
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) UIView *bottomView;
+@property (nonatomic, strong) UITextField *textField;
+@property (nonatomic, strong) UILabel *totalPrice;
+
+@property (nonatomic, strong) NSString *addressName;
+@property (nonatomic, strong) NSString *phoneNumber;
+@property (nonatomic, strong) NSString *address;
+@property (nonatomic, strong) NSString *addressId;
+@property (nonatomic, assign) int baaiIconNumber;
+@end
+
+@implementation OrderConfirmationViewController
+
+- (instancetype)init{
+    self = [super init];
+    if (self) {
+        _dataArray = [[NSMutableArray alloc] init];
+        _recomId = [[NSString alloc] init];
+    }
+    return self;
+}
+
+#pragma mark -- UITextFieldDelegate
+- (void)textFieldDidEndEditing:(UITextField *)textField{
+    float baaiMoney = [_textField.text floatValue]/100;
+    float myMoney = [_money floatValue];
+    price = myMoney - baaiMoney;
+    _totalPrice.text = [NSString stringWithFormat:@"%.2f",price];
+    _totalPrice.adjustsFontSizeToFitWidth = YES;
+}
+//- (BOOL)textFieldShouldEndEditing:(UITextField *)textField{
+//    
+//    [self.tableView reloadData];
+//    return YES;
+//}
+#pragma mark -- addressdelegate
+- (void)GetAddressData:(ReciveAdressModel *)model{
+    _addressName = model.consignee;
+    _phoneNumber = model.mobile;
+    _address = model.address;
+    _addressId = model.reciveaddrId;
+    [self.tableView reloadData];
+}
+
+- (void)WXPaySuccessAction:(NSNotification *)noti{
+    [self.navigationController popViewControllerAnimated:YES];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view from its nib.
+    self.title = MyLocalizedString(@"确认订单");
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(WXPaySuccessAction:) name:@"WXPaySuccessNotification" object:nil];
+    
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 5, kScreenWidth, kScreenHeight - 114) style:UITableViewStylePlain];
+    _tableView.dataSource = self;
+    _tableView.delegate = self;
+    [self.view addSubview:_tableView];
+    
+    [ReciveAdressModel payReciveAddressDataType:@"2" block:^(NSString *name, NSString *phoneNumber, NSString *addressDetail, NSString *addressId) {
+        _addressName = name;
+        _phoneNumber = phoneNumber;
+        _address = addressDetail;
+        _addressId = addressId;
+        [self.tableView reloadData];
+    }];
+    
+    [RebateAndBaaiIconModel getAllBaaiIconBlock:^(int baaiIconNum) {
+        _baaiIconNumber = baaiIconNum;
+        [self.tableView reloadData];
+    }];
+    
+    _bottomView = [[UIView alloc] initWithFrame:CGRectMake(0, kScreenHeight - 50.f - 64.f, kScreenWidth, 50)];
+    _bottomView.backgroundColor = [UIColor lightGrayColor];
+    [self.view bringSubviewToFront:_bottomView];
+    [self.view addSubview:_bottomView];
+    
+    UILabel *combined = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 50, 30)];
+    combined.text = @"合计:";
+    combined.textColor = [UIColor colorRGBWithRed:228 green:63 blue:105 alpha:1];
+    [_bottomView addSubview:combined];
+    
+    _totalPrice = [[UILabel alloc] initWithFrame:CGRectMake(60, 10, 80, 30)];
+    _totalPrice.adjustsFontSizeToFitWidth = YES;
+    if (_textField.text.length == 0) {
+        float myMoney = [_money floatValue];
+        _totalPrice.text = [NSString stringWithFormat:@"%.2f",myMoney];
+    }else{
+        float baaiMoney = [_textField.text floatValue];
+        float myMoney = [_money floatValue];
+        price = baaiMoney + myMoney;
+        _totalPrice.text = [NSString stringWithFormat:@"%.2f",price];
+    }
+//    totlePrice.text = @"随便写一个";
+    _totalPrice.font = [UIFont systemFontOfSize:13.f];
+    [_bottomView addSubview:_totalPrice];
+    
+    UIButton *button = [UIButton buttonWithType:UIButtonTypeCustom];
+    button.frame = CGRectMake(kScreenWidth - 100, 10, 80, 30);
+//    button.titleLabel.text = @"提交订单";
+    [button setTitle:@"提交订单" forState:UIControlStateNormal];
+//    button.titleLabel.textColor = [UIColor whiteColor];
+    [button setTitleColor:[UIColor whiteColor] forState:UIControlStateNormal];
+    button.titleLabel.font = [UIFont systemFontOfSize:14.f];
+    [button setBackgroundColor:[UIColor colorRGBWithRed:228 green:63 blue:104 alpha:1]];
+    button.layer.masksToBounds = YES;
+    button.layer.cornerRadius = 4.f;
+    [button addTarget:self action:@selector(submitOrderAction:) forControlEvents:UIControlEventTouchUpInside];
+    [_bottomView addSubview:button];
+    
+}
+
+- (void)submitOrderAction:(id)sender{
+    if ([_textField.text intValue] > _baaiIconNumber) {
+        UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil message:[NSString stringWithFormat:@"请输入少于%d个八爱币",_baaiIconNumber] delegate:nil cancelButtonTitle:MyLocalizedString(@"OK") otherButtonTitles:nil, nil];
+        [alertView show];
+    }else{
+        UIActionSheet *myActionSheet = [[UIActionSheet alloc] initWithTitle:nil delegate:self cancelButtonTitle:@"取消" destructiveButtonTitle:nil otherButtonTitles:@"微信支付",@"支付宝支付",@"支付宝网页支付", nil];
+        [myActionSheet showInView:self.view];
+    }
+}
+
+#pragma mark -- UIActionSheetDelegate
+- (void)actionSheet:(UIActionSheet *)actionSheet clickedButtonAtIndex:(NSInteger)buttonIndex{
+    NSLog(@"支付宝网页支付");
+    NSString *invoiceCode = nil;
+    if ([_invoice isEqual:@"个人"]) {
+        invoiceCode = @"1";
+    }
+    if ([_invoice isEqual:@"公司"]) {
+        invoiceCode = @"2";
+    }
+    NSString *myCode = nil;
+    if (_isCart) {
+        myCode = [_dataArray componentsJoinedByString:@"_"];
+        NSString *cartId = [_idArr componentsJoinedByString:@"_"];
+        NSLog(@"%@",myCode);
+        [SubmitOrderModel submitOrderDataWithCode:myCode address:_addressId Msg:nil baaiIcon:_textField.text invoice:invoiceCode cartId:cartId block:^(int code, NSString *msg, NSString *alipayOrderNo) {
+            if (code == 1) {
+                if (buttonIndex == 0) {
+                    NSLog(@"微信支付");
+                    [WXPayModel getWXParagamWithCode:alipayOrderNo block:^(NSString *appId, NSString *nonceStr, NSString *package, NSString *partnerId, NSString *prepayId, NSString *sign, NSString *timeStamp) {
+                        [[LOVWXPayClient shareInstance] parametersWithPartnerId:appId parpayId:prepayId package:package nonceStr:nonceStr timeStamp:timeStamp sign:sign];
+                    }];
+                }
+                if (buttonIndex == 1) {
+                    NSLog(@"支付宝支付");
+                }
+                if (buttonIndex == 2) {
+                NSLog(@"订单提交成功");
+                    PayViewController *payVC = [[PayViewController alloc] init];
+                    payVC.code = alipayOrderNo;
+                    //                  [self.navigationController pushViewController:payVC animated:YES];
+                    [self.navigationController presentViewController:payVC animated:YES completion:nil];
+                }
+            }else{
+                UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil message:msg delegate:self cancelButtonTitle:MyLocalizedString(@"OK") otherButtonTitles:nil, nil];
+                [alertView show];
+            }
+        }];
+    }else{
+        myCode = [NSString stringWithFormat:@"%@:%@:%.2f:%@",_code,@"1",[_totalPrice.text floatValue],_dresserId];
+        NSLog(@"%@",myCode);
+        [SubmitOrderModel submitOrderDataWithCode:myCode address:_addressId Msg:nil baaiIcon:_textField.text invoice:invoiceCode cartId:@"0" block:^(int code, NSString *msg, NSString *alipayOrderNo) {
+            if (code == 1) {
+                if (buttonIndex == 0) {
+                    NSLog(@"微信支付");
+                    [WXPayModel getWXParagamWithCode:alipayOrderNo block:^(NSString *appId, NSString *nonceStr, NSString *package, NSString *partnerId, NSString *prepayId, NSString *sign, NSString *timeStamp) {
+                        [[LOVWXPayClient shareInstance] parametersWithPartnerId:appId parpayId:prepayId package:package nonceStr:nonceStr timeStamp:timeStamp sign:sign];
+                        [[LOVWXPayClient shareInstance] payProduct];
+                    }];
+                }
+                if (buttonIndex == 1) {
+                    NSLog(@"支付宝支付");
+                }
+                if (buttonIndex == 2) {
+                    NSLog(@"订单提交成功");
+                    PayViewController *payVC = [[PayViewController alloc] init];
+                    payVC.code = alipayOrderNo;
+                    //                  [self.navigationController pushViewController:payVC animated:YES];
+                    [self.navigationController presentViewController:payVC animated:YES completion:nil];
+                }
+            }else{
+                UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil message:msg delegate:self cancelButtonTitle:MyLocalizedString(@"OK") otherButtonTitles:nil, nil];
+                [alertView show];
+            }
+        }];
+    }
+}
+
+#pragma mark -- UITableViewDataSource
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView;{
+    return 6;
+}
+
+
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+//    return [_dataArray count];
+//    return 5;
+    if (section == 1) {
+        if ([_dataArray count] == 0) {
+            return 0;
+        }else{
+            if (folder[section] == 1) {
+            return [_dataArray count];
+//                return 2;
+            }
+        }
+        return 0;
+    }else{
+        return 0;
+    }
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    static NSString *cellID = @"cellID";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID];
+    if (cell == nil) {
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID];
+    }
+    for (UIView *view in cell.contentView.subviews) {
+        [view removeFromSuperview];
+    }
+    _thumbPath = _imgUrlArr[indexPath.row];
+    UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+    [imageView sd_setImageWithURL:[NSURL URLWithString:_thumbPath] placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+    imageView.backgroundColor = [UIColor lightGrayColor];
+    [cell.contentView addSubview:imageView];
+    
+    UIImageView *rightImage = [[UIImageView alloc] initWithFrame:CGRectMake(kScreenWidth - 25, 27, 20, 10)];
+    rightImage.backgroundColor = [UIColor clearColor];
+    [cell.contentView addSubview:rightImage];
+    
+    
+    _intro = _introArr[indexPath.row];
+    UILabel *intro = [[UILabel alloc] initWithFrame:CGRectMake(60, 5, kScreenWidth - 90, 35)];
+    NSString *intr = [_intro stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    intro.text = intr;
+    intro.numberOfLines = 0;
+    intro.font = [UIFont systemFontOfSize:14.f];
+    //        intro.backgroundColor = [UIColor lightGrayColor];
+    [cell.contentView addSubview:intro];
+    
+    UILabel *colorLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 45, 60, 15)];
+    colorLabel.font = [UIFont systemFontOfSize:13.f];
+    colorLabel.text = @"商品属性:";
+    [cell.contentView addSubview:colorLabel];
+    
+    UILabel *skuLabel = [[UILabel alloc] initWithFrame:CGRectMake(130, 45, 100, 15)];
+    skuLabel.font = [UIFont systemFontOfSize:13.f];
+    skuLabel.text = _skuArr[indexPath.row];
+    [cell.contentView addSubview:skuLabel];
+    
+//    cell.textLabel.text = @"test";
+    cell.selectionStyle = UITableViewCellSelectionStyleNone;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    
+    return cell;
+}
+
+- (void)choiceInvoiceAction:(UIButton *)sender{
+    sender.layer.borderColor = [[UIColor Gimmebar] CGColor];
+    if ([sender tag] == 100) {
+        UIButton *button = (UIButton *)[[sender superview] viewWithTag:200];
+        button.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+    }
+    _invoice = sender.titleLabel.text;
+}
+
+- (void)choiceInvoiceComanyAction:(UIButton *)sender{
+    sender.layer.borderColor = [[UIColor Gimmebar] CGColor];
+    UIButton *button = (UIButton *)[[sender superview] viewWithTag:100];
+    button.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+    _invoice = sender.titleLabel.text;
+}
+
+#pragma mark -- UITableViewDelegate
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section{
+    if (section == 0) {
+        UIImageView *backView = [[UIImageView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 80)];
+//        backView.backgroundColor = [UIColor colorRGBWithRed:235 green:180 blue:188 alpha:1.f];
+        backView.image = [UIImage imageNamed:@"bg_my"];
+        backView.userInteractionEnabled = YES;
+        //        创建一个label对象，给它设置一个背景颜色，方便区分section
+        UILabel *tempLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, backView.frame.size.height - 1, backView.frame.size.width , 1)];
+        tempLabel.backgroundColor= [UIColor blackColor];
+        tempLabel.alpha = 0.1;
+        [backView  addSubview:tempLabel];
+        
+        if (_addressName.length != 0) {
+            UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(30, 10, 150, 20)];
+            //    label.backgroundColor = [UIColor lightGrayColor];
+            label.textColor = [UIColor blackColor];
+            label.font = [UIFont systemFontOfSize:13.f];
+            label.text = [NSString stringWithFormat:@"%@:%@", MyLocalizedString(@"收货人"), _addressName];
+            [backView addSubview:label];
+            
+            UILabel *phoneNum = [[UILabel alloc] initWithFrame:CGRectMake(160, 10, 100, 20)];
+            //    phoneNum.backgroundColor = [UIColor lightGrayColor];
+            phoneNum.textColor = [UIColor blackColor];
+            phoneNum.font = [UIFont systemFontOfSize:13.f];
+            phoneNum.text = [NSString stringWithFormat:@"%@",_phoneNumber];
+            [backView addSubview:phoneNum];
+            
+            UILabel *address = [[UILabel alloc] initWithFrame:CGRectMake(30, 40, 250, 30)];
+            //    address.backgroundColor = [UIColor lightGrayColor];
+            address.textColor = [UIColor blackColor];
+            address.font = [UIFont systemFontOfSize:12.f];
+            address.numberOfLines = 0;
+            address.text = _address;
+            [backView addSubview:address];
+        }else{
+            UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 0, kScreenWidth - 10, 80)];
+            //label.backgroundColor = [UIColor lightGrayColor];
+            label.text = MyLocalizedString(@"点击此处可选择收货地址");
+            label.textColor = [UIColor blackColor];
+            [backView addSubview:label];
+        }
+        
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(choiceAddressAction:)];
+        [backView addGestureRecognizer:tap];
+        
+        
+        return backView;
+    }
+    if (section == 1) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 65)];
+        view.backgroundColor = [UIColor whiteColor];
+        //        创建UILabel对象
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(8, 0, kScreenWidth, 44)];
+        label.tag = 500 + section;
+        [view addSubview:label];
+        label.backgroundColor = [UIColor clearColor];
+        //        创建一个手势对象
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(tapAction:)];
+        [label addGestureRecognizer:tap];
+        label.userInteractionEnabled = YES;
+        
+        if (!_isCart) {
+            UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+            [imageView sd_setImageWithURL:[NSURL URLWithString:_thumbPath] placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            imageView.backgroundColor = [UIColor lightGrayColor];
+            [view addSubview:imageView];
+            
+            UILabel *intro = [[UILabel alloc] initWithFrame:CGRectMake(60, 5, kScreenWidth - 70, 35)];
+            NSString *intr = [_intro stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            intro.text = intr;
+            intro.numberOfLines = 0;
+            intro.font = [UIFont systemFontOfSize:14.f];
+            //        intro.backgroundColor = [UIColor lightGrayColor];
+            [view addSubview:intro];
+            
+            UILabel *colorLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 45, 60, 15)];
+            colorLabel.font = [UIFont systemFontOfSize:13.f];
+            colorLabel.text = @"颜色分类:";
+            [view addSubview:colorLabel];
+            
+            UILabel *color = [[UILabel alloc] initWithFrame:CGRectMake(120, 45, 60, 15)];
+            color.font = [UIFont systemFontOfSize:13.f];
+            if (_colorStr == nil) {
+                color.text = @"默认";
+            }else{
+                color.text = _colorStr;
+            }
+            [view addSubview:color];
+            
+            UILabel *sizeLabel = [[UILabel alloc] initWithFrame:CGRectMake(200, 45, 40, 15)];
+            sizeLabel.font = [UIFont systemFontOfSize:13.f];
+            sizeLabel.text = @"尺码:";
+            [view addSubview:sizeLabel];
+            
+            UILabel *size =  [[UILabel alloc] initWithFrame:CGRectMake(240, 45, 50, 15)];
+            size.font = [UIFont systemFontOfSize:13.f];
+            if (_sizeStr == nil) {
+                size.text = @"默认";
+            }else{
+                size.text = _sizeStr;
+            }
+            [view addSubview:size];
+        }else{
+            UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 250, 40)];
+            label.text = @"点击收回列表";
+            [view addSubview:label];
+            
+            UIImageView *imageView = [[UIImageView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+            [imageView sd_setImageWithURL:[NSURL URLWithString:_imgUrlArr[0]] placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            imageView.backgroundColor = [UIColor lightGrayColor];
+            [view addSubview:imageView];
+            
+            UIImageView *rightImage = [[UIImageView alloc] initWithFrame:CGRectMake(kScreenWidth - 25, 27, 20, 10)];
+            rightImage.backgroundColor = [UIColor clearColor];
+            [view addSubview:rightImage];
+            
+            UILabel *intro = [[UILabel alloc] initWithFrame:CGRectMake(60, 5, kScreenWidth - 90, 35)];
+            NSString *intr = [_introArr[0] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            intro.text = intr;
+            intro.numberOfLines = 0;
+            intro.font = [UIFont systemFontOfSize:14.f];
+            //        intro.backgroundColor = [UIColor lightGrayColor];
+            [view addSubview:intro];
+            
+            UILabel *colorLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 45, 60, 15)];
+            colorLabel.font = [UIFont systemFontOfSize:13.f];
+            colorLabel.text = @"商品属性:";
+            [view addSubview:colorLabel];
+            
+            UILabel *skuLabel = [[UILabel alloc] initWithFrame:CGRectMake(130, 45, 100, 15)];
+            skuLabel.font = [UIFont systemFontOfSize:13.f];
+            skuLabel.text = _skuArr[0];
+            [view addSubview:skuLabel];
+            
+            if (folder[section] == 0) {
+                rightImage.image = [UIImage imageNamed:@"icon_down_arrow.jpg"];
+                label.hidden = YES;
+            }else{
+                rightImage.image = [UIImage imageNamed:@"icon_up_arrow.jpg"];
+                label.hidden = NO;
+                imageView.hidden = YES;
+                intro.hidden = YES;
+                colorLabel.hidden = YES;
+                skuLabel.hidden = YES;
+            }
+        }
+        
+        return view;
+        
+    }
+    if (section == 2) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 55)];
+        UILabel *topLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 1, view.frame.size.width , 1)];
+        topLabel.backgroundColor= [UIColor blackColor];
+        topLabel.alpha = 0.1;
+        [view  addSubview:topLabel];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 100, 30)];
+        label.text = @"支付方式";
+        label.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:label];
+        
+        UILabel *payWay = [[UILabel alloc] initWithFrame:CGRectMake(kScreenWidth - 120, 10, 100, 30)];
+        payWay.text = @"支付宝，快捷支付";
+        payWay.adjustsFontSizeToFitWidth = YES;
+        payWay.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:payWay];
+        return view;
+    }
+    if (section == 3) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 55)];
+        
+        UILabel *tempLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, view.frame.size.height - 1, view.frame.size.width , 1)];
+        tempLabel.backgroundColor= [UIColor blackColor];
+        tempLabel.alpha = 0.1;
+        [view  addSubview:tempLabel];
+        
+        UILabel *topLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, 1, view.frame.size.width , 1)];
+        topLabel.backgroundColor= [UIColor blackColor];
+        topLabel.alpha = 0.1;
+        [view  addSubview:topLabel];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 100, 30)];
+        label.text = @"发票信息";
+        label.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:label];
+        
+        UIButton *button = [[UIButton alloc] initWithFrame:CGRectMake(kScreenWidth - 120, 5, 100, 20)];
+        //        button.titleLabel.text = @"个人";
+        [button setTitle:@"个人" forState:UIControlStateNormal];
+        [button setTitleColor:[UIColor grayColor] forState:UIControlStateNormal];
+        button.titleLabel.font = [UIFont systemFontOfSize:13.f];
+        //        button.backgroundColor = [UIColor lightGrayColor];
+        button.tag = 100;
+        button.layer.masksToBounds = YES;
+        button.layer.cornerRadius = 4.f;
+        button.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+        button.layer.borderWidth = 1.f;
+        [button addTarget:self action:@selector(choiceInvoiceAction:) forControlEvents:UIControlEventTouchUpInside];
+        [view addSubview:button];
+        
+        UIButton *bnt = [[UIButton alloc] initWithFrame:CGRectMake(kScreenWidth - 120, 30, 100, 20)];
+        //        bnt.titleLabel.text = @"公司";
+        [bnt setTitle:@"公司" forState:UIControlStateNormal];
+        [bnt setTitleColor:[UIColor grayColor] forState:UIControlStateNormal];
+        bnt.titleLabel.font = [UIFont systemFontOfSize:13.f];
+        //        bnt.backgroundColor = [UIColor lightGrayColor];
+        bnt.tag = 200;
+        bnt.layer.masksToBounds = YES;
+        bnt.layer.cornerRadius = 4.f;
+        bnt.layer.borderColor = [[UIColor lightGrayColor] CGColor];
+        bnt.layer.borderWidth = 1.f;
+        [bnt addTarget:self action:@selector(choiceInvoiceComanyAction:) forControlEvents:UIControlEventTouchUpInside];
+        [view addSubview:bnt];
+        return view;
+    }
+    if (section == 4) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 55)];
+        
+        UILabel *tempLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, view.frame.size.height - 1, view.frame.size.width , 1)];
+        tempLabel.backgroundColor= [UIColor blackColor];
+        tempLabel.alpha = 0.1;
+        [view  addSubview:tempLabel];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 180, 30)];
+        label.text = [NSString stringWithFormat:@"八爱币：可用%d八爱币",_baaiIconNumber];
+        label.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:label];
+        
+        
+        _textField = [[UITextField alloc] initWithFrame:CGRectMake(kScreenWidth - 150, 10, 130, 30)];
+        _textField.borderStyle = UITextBorderStyleRoundedRect;
+        _textField.placeholder = @"请输入八爱币个数";
+        _textField.delegate = self;
+        _textField.keyboardType = UIKeyboardTypeNumberPad;
+        _textField.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:_textField];
+        return view;
+    }
+    if (section == 5) {
+        UIView *view = [[UIView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 55)];
+        
+        UILabel *tempLabel = [[UILabel alloc] initWithFrame:CGRectMake(8, view.frame.size.height - 1, view.frame.size.width , 1)];
+        tempLabel.backgroundColor= [UIColor blackColor];
+        tempLabel.alpha = 0.1;
+        [view  addSubview:tempLabel];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(10, 10, 100, 30)];
+        label.text = @"商品金额";
+        label.font = [UIFont systemFontOfSize:13.f];
+        [view addSubview:label];
+        
+        UILabel *money = [[UILabel alloc] initWithFrame:CGRectMake(kScreenWidth - 100, 10, 80, 30)];
+        money.textColor = [UIColor Gimmebar];
+        float myMoney = [_money floatValue];
+        money.text = [NSString stringWithFormat:@"￥%.2f",myMoney];
+        money.adjustsFontSizeToFitWidth = YES;
+        [view addSubview:money];
+        return view;
+    }
+    return nil;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    return 62.f;
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section{
+    if (section == 0) {
+        return 80.f;
+    }
+    if (section == 1) {
+        return 65.f;
+    }
+    return 55.f;
+}
+
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath{
+    
+}
+//修改地址手势事件
+- (void)choiceAddressAction:(id)sender{
+    AddressManagerController *addressManageVC = [[AddressManagerController alloc] init];
+    addressManageVC.title = @"选择收货地址";
+    addressManageVC.isCommidity = YES;
+    addressManageVC.delegate = self;
+    [self.navigationController pushViewController:addressManageVC animated:YES];
+}
+
+- (void)tapAction:(UITapGestureRecognizer *)sender{
+    NSInteger section = sender.view.tag - 500;
+    //    与1异或，如果先前值是1，结果为0，相反，值为1
+    folder[section] = folder[section]^1;
+    
+    //    1)刷新全部
+    //    [self.tableView reloadData];
+    //    1)刷新局部
+    [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:section] withRowAnimation:UITableViewRowAnimationFade];
+}
+
+/*
+#pragma mark - Navigation
+
+// In a storyboard-based application, you will often want to do a little preparation before navigation
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+    // Get the new view controller using [segue destinationViewController].
+    // Pass the selected object to the new view controller.
+}
+*/
+
+@end

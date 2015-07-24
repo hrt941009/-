@@ -1,0 +1,477 @@
+//
+//  CommentViewController.m
+//  Love
+//
+//  Created by use on 15-3-20.
+//  Copyright (c) 2015年 HaiTao. All rights reserved.
+//
+
+#import "CommentViewController.h"
+
+#import "ShareDetialDataModel.h"
+#import "CommentReplayModel.h"
+#import "CCBottomView.h"
+#import "LOVWriteCommentView.h"
+#import "CommentListModel.h"
+
+#import "MJRefresh.h"
+#import "LOVCircle.h"
+
+@interface CommentViewController ()<UITableViewDataSource,UITableViewDelegate,CCBottomViewDelegate,LOVWriteCommentViewDelegate>
+{
+    int nextPage;
+    CGFloat height;
+    int numOfComment;
+}
+@property (nonatomic, strong) UITableView *tableView;
+@property (nonatomic, strong) NSMutableArray *dataArray;
+@property (nonatomic, strong) NSMutableArray *listProductArray;
+
+@property (nonatomic, strong) LOVWriteCommentView *writeComment;
+@end
+
+@implementation CommentViewController
+#pragma mark --LOVWriteCommentViewDelegate
+- (void)postCommentContent:(NSString *)content{
+    if (_commentStatu == MyCommentStatusShare) {
+        if ([content length] > 0) {
+            [CommentReplayModel postShareReplayItemShareId:_shareId content:content block:^(int code) {
+                UIAlertView *alertView = nil;
+                if (code == 0) {
+                    alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                           message:@"发送失败"
+                                                          delegate:self
+                                                 cancelButtonTitle:MyLocalizedString(@"返回")
+                                                 otherButtonTitles:nil];
+                    alertView.tag = 111;
+                    alertView.delegate = self;
+                    [alertView show];
+                }
+                if (code == 1) {
+                    _totleDiscussNum = [NSString stringWithFormat:@"%d",[_totleDiscussNum intValue] + 1];
+                    [_dataArray removeAllObjects];
+                    [self reloadTableView];
+                    [_writeComment hiddenViewAction];
+                }
+            }];
+        }else{
+            UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                                message:@"请填写评论"
+                                                               delegate:self
+                                                      cancelButtonTitle:MyLocalizedString(@"返回")
+                                                      otherButtonTitles:nil];
+            [alertView show];
+        }
+
+    }else if (_commentStatu == MyCommentStatusProduct){
+        if ([content length] > 0) {
+            NSString *toId = @"";
+            [CommentReplayModel postReplayWithItem:_productId toId:toId content:content block:^(int code) {
+                UIAlertView *alertView = nil;
+                if (code == 0) {
+                    alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                           message:@"发送失败"
+                                                          delegate:self
+                                                 cancelButtonTitle:MyLocalizedString(@"返回")
+                                                 otherButtonTitles:nil];
+                    alertView.tag = 111;
+                    alertView.delegate = self;
+                    [alertView show];
+                }
+                if (code == 1) {
+                    _totleDiscussNum = [NSString stringWithFormat:@"%d",[_totleDiscussNum intValue] + 1];
+                    [_dataArray removeAllObjects];
+                    [self reloadTableView];
+                    [_writeComment hiddenViewAction];
+                }
+            }];
+        }else{
+            UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                                message:@"请填写评论"
+                                                               delegate:self
+                                                      cancelButtonTitle:MyLocalizedString(@"返回")
+                                                      otherButtonTitles:nil];
+            [alertView show];
+        }
+    }else if (_commentStatu == MyCommentStatusDresser){
+        if ([content length] > 0) {
+            [CommentReplayModel postLiveRepalyItemLiveId:_liveId content:content block:^(int code) {
+                UIAlertView *alertView = nil;
+                if (code == 0) {
+                    alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                           message:@"发送失败"
+                                                          delegate:self
+                                                 cancelButtonTitle:MyLocalizedString(@"返回")
+                                                 otherButtonTitles:nil];
+                    alertView.tag = 111;
+                    alertView.delegate = self;
+                    [alertView show];
+                }
+                if (code == 1) {
+                    _totleDiscussNum = [NSString stringWithFormat:@"%d",[_totleDiscussNum intValue] + 1];
+                    [_dataArray removeAllObjects];
+                    [self reloadTableView];
+                    [_writeComment hiddenViewAction];
+                }
+            }];
+        }else{
+            UIAlertView *alertView = [[UIAlertView alloc] initWithTitle:nil
+                                                                message:@"请填写评论"
+                                                               delegate:self
+                                                      cancelButtonTitle:MyLocalizedString(@"返回")
+                                                      otherButtonTitles:nil];
+            [alertView show];
+        }
+
+    }
+}
+- (void)cancelWirteComment{
+    [_writeComment hiddenViewAction];
+}
+
+
+#pragma mark --CCBottomViewDelegate
+- (void)writeMyComment{
+    _writeComment = [[LOVWriteCommentView alloc] init];
+    _writeComment.alpha = 1.f;
+    [_writeComment showWirteView];
+    _writeComment.delegate = self;
+    [self.view addSubview:_writeComment];
+}
+
+- (instancetype)init{
+    self = [super init];
+    if (self) {
+        nextPage = 1;
+    }
+    return self;
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Do any additional setup after loading the view.
+    _dataArray = [[NSMutableArray alloc] init];
+    _listProductArray = [[NSMutableArray alloc] init];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(getShareDiscussData:)
+                                                 name:kShareCommentDataListNotificationName
+                                               object:nil];
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(getShareDiscussData:)
+                                                 name:kAlbumCommentNotificationName
+                                               object:nil];
+    
+    [[NSNotificationCenter defaultCenter] addObserver:self
+                                             selector:@selector(getShareDiscussData:)
+                                                 name:kLiveCommentNotificationName
+                                               object:nil];
+    
+    [self reloadTableView];
+    
+}
+
+- (void)reloadTableView{
+    _tableView = nil;
+    _tableView = [[UITableView alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, kScreenHeight - 64.f - 44.f) style:UITableViewStylePlain];
+    _tableView.dataSource = self;
+    _tableView.delegate = self;
+    [self.view addSubview:_tableView];
+    
+    CCBottomView *bottomView = [[CCBottomView alloc] initWithFrame:CGRectMake(0, kScreenHeight - 64 - 44, kScreenWidth, 44)];
+    bottomView.backgroundColor = [UIColor clearColor];
+    bottomView.delgate = self;
+    [bottomView setBottomViewForWirte:YES];
+    [self.view addSubview:bottomView];
+    
+    if (_commentStatu == MyCommentStatusShare) {
+        [ShareDetialDataModel getShareDiscussDataWithShareId:_shareId page:@"1" pnum:@"10"];
+    }else if (_commentStatu == MyCommentStatusProduct){
+        [CommentListModel getCommentWithProductID:_productId page:@"1" pnum:@"10"];
+    }else if (_commentStatu == MyCommentStatusDresser){
+        [CommentListModel getCommentWithLiveID:_liveId page:@"1" pnum:@"10"];
+    }
+    //    [self addHeaderRefresh];
+    [self addFooterRefresh];
+
+}
+
+- (void)addHeaderRefresh{
+    // 添加下拉刷新头部控件
+    __unsafe_unretained typeof(self) mySelf = self;
+    [self.tableView addHeaderWithCallback:^{
+        if ([mySelf.dataArray count] > 0) {
+            [mySelf.dataArray removeAllObjects];
+            [mySelf.tableView reloadData];
+        }
+        if (mySelf.commentStatu == MyCommentStatusShare) {
+            [ShareDetialDataModel getShareDiscussDataWithShareId:mySelf.shareId page:@"1" pnum:@"20"];
+        }else if (mySelf.commentStatu == MyCommentStatusProduct){
+            [CommentListModel getCommentWithProductID:mySelf.productId page:@"1" pnum:@"20"];
+        }else if (mySelf.commentStatu == MyCommentStatusDresser){
+            [CommentListModel getCommentWithLiveID:mySelf.liveId page:@"1" pnum:@"20"];
+        }
+        
+    }];
+    
+    [self.tableView headerBeginRefreshing];
+}
+
+- (void)addFooterRefresh{
+    __unsafe_unretained typeof(self) mySelf = self;
+    // 添加上拉刷新尾部控件
+    [self.tableView addFooterWithCallback:^{
+        // 进入刷新状态就会回调这个Block
+        [mySelf loadingDataAction];
+    }];
+}
+
+- (void)loadingDataAction{
+    nextPage = nextPage + 1;
+    if (_commentStatu == MyCommentStatusShare) {
+        [ShareDetialDataModel getShareDiscussDataWithShareId:_shareId page:[NSString stringWithFormat:@"%d",nextPage] pnum:@"10"];
+    }else if(_commentStatu == MyCommentStatusProduct){
+        [CommentListModel getCommentWithProductID:_productId page:[NSString stringWithFormat:@"%d",nextPage] pnum:@"10"];
+    }else if (_commentStatu == MyCommentStatusDresser){
+        [CommentListModel getCommentWithLiveID:_liveId page:[NSString stringWithFormat:@"%d",nextPage] pnum:@"10"];
+    }
+    
+}
+
+- (void)getShareDiscussData:(NSNotification *)noti{
+    _listProductArray = noti.object;
+    [_dataArray addObjectsFromArray:noti.object];
+    [self.tableView reloadData];
+    [self.tableView headerEndRefreshing];
+    [self.tableView footerEndRefreshing];
+    if ([_listProductArray count] == 0) {
+        [self.tableView removeFooter];
+    }
+}
+
+#pragma mark -- UITableViewDataSource
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{
+    if (section == 0) {
+        if ([_dataArray count] > 0) {
+            return [_dataArray count];
+        }else{
+            return 1;
+        }
+    }
+    return 0;
+}
+
+- (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{
+    if ([_listProductArray count] == 0) {
+        return 2;
+    }
+    return 1;
+}
+
+- (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath{
+    static NSString *cellID1 = @"cellID1";
+    static NSString *cellID2 = @"cellID2";
+    static NSString *cellID3 = @"cellID3";
+    
+    static NSString *cellID4 = @"noCellID";
+    if ([_dataArray count] > 0) {
+        if (_commentStatu == MyCommentStatusShare) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID1];
+            if (cell == nil) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID1];
+            }
+            for (UIView *vi in cell.contentView.subviews) {
+                [vi removeFromSuperview];
+            }
+            
+            ShareDetialDataModel *model = (ShareDetialDataModel *)_dataArray[indexPath.row];
+            UIView *imageView = [[UIView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+            LOVCircle *circle = [[LOVCircle alloc] initWithFrame:CGRectMake(0, 0, 40, 40) imageWithPath:model.header placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            [imageView addSubview:circle];
+            [cell.contentView addSubview:imageView];
+            
+            UILabel *nameLable = [[UILabel alloc] initWithFrame:CGRectMake(60, 10, kScreenWidth - 70, 20)];
+            nameLable.text = model.name;
+            nameLable.textColor = [UIColor colorRGBWithRed:167 green:205 blue:222 alpha:1];
+            [cell.contentView addSubview:nameLable];
+            
+            UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 30, kScreenWidth - 70, 15)];
+            timeLabel.text = model.createTime;
+            timeLabel.font = [UIFont systemFontOfSize:12.f];
+            [cell.contentView addSubview:timeLabel];
+            
+            UILabel *contentLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 40, kScreenWidth - 70, height)];
+            contentLabel.text = model.content;
+            contentLabel.font = [UIFont systemFontOfSize:14.f];
+            contentLabel.numberOfLines = 5;
+            [cell.contentView addSubview:contentLabel];
+            
+            return cell;
+        }
+        if (_commentStatu == MyCommentStatusProduct) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID2];
+            if (cell == nil) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID1];
+            }
+            for (UIView *vi in cell.contentView.subviews) {
+                [vi removeFromSuperview];
+            }
+            
+            CommentListModel *model = (CommentListModel *)_dataArray[indexPath.row];
+            UIView *imageView = [[UIView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+            LOVCircle *circle = [[LOVCircle alloc] initWithFrame:CGRectMake(0, 0, 40, 40) imageWithPath:model.fromHeader placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            [imageView addSubview:circle];
+            [cell.contentView addSubview:imageView];
+            
+            UILabel *nameLable = [[UILabel alloc] initWithFrame:CGRectMake(60, 10, kScreenWidth - 70, 20)];
+            nameLable.text = model.fromName;
+            nameLable.textColor = [UIColor colorRGBWithRed:167 green:205 blue:222 alpha:1];
+            [cell.contentView addSubview:nameLable];
+            
+            UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 30, kScreenWidth - 70, 15)];
+            timeLabel.text = model.commentCreateTime;
+            timeLabel.font = [UIFont systemFontOfSize:12.f];
+            [cell.contentView addSubview:timeLabel];
+            
+            UILabel *contentLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 40, kScreenWidth - 70, height)];
+            contentLabel.text = model.commentMessage;
+            contentLabel.font = [UIFont systemFontOfSize:14.f];
+            contentLabel.numberOfLines = 5;
+            [cell.contentView addSubview:contentLabel];
+            
+            return cell;
+        }
+        if (_commentStatu == MyCommentStatusDresser) {
+            UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID3];
+            if (cell == nil) {
+                cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID1];
+            }
+            for (UIView *vi in cell.contentView.subviews) {
+                [vi removeFromSuperview];
+            }
+            
+            CommentListModel *model = (CommentListModel *)_dataArray[indexPath.row];
+            UIView *imageView = [[UIView alloc] initWithFrame:CGRectMake(10, 10, 40, 40)];
+            LOVCircle *circle = [[LOVCircle alloc] initWithFrame:CGRectMake(0, 0, 40, 40) imageWithPath:model.fromHeader placeholderImage:[UIImage imageNamed:kDefalutCommodityImageDownload]];
+            [imageView addSubview:circle];
+            [cell.contentView addSubview:imageView];
+            
+            UILabel *nameLable = [[UILabel alloc] initWithFrame:CGRectMake(60, 10, kScreenWidth - 70, 20)];
+            nameLable.text = model.fromName;
+            nameLable.textColor = [UIColor colorRGBWithRed:167 green:205 blue:222 alpha:1];
+            [cell.contentView addSubview:nameLable];
+            
+            UILabel *timeLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 30, kScreenWidth - 70, 15)];
+            timeLabel.text = model.commentCreateTime;
+            timeLabel.font = [UIFont systemFontOfSize:12.f];
+            [cell.contentView addSubview:timeLabel];
+            NSLog(@"time=%@",model.commentCreateTime);
+            
+            UILabel *contentLabel = [[UILabel alloc] initWithFrame:CGRectMake(60, 40, kScreenWidth - 70, height)];
+            contentLabel.text = model.commentMessage;
+            contentLabel.font = [UIFont systemFontOfSize:14.f];
+            contentLabel.numberOfLines = 5;
+            [cell.contentView addSubview:contentLabel];
+            
+            return cell;
+        }
+    }else{
+        UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:cellID4];
+        if (cell == nil) {
+            cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleDefault reuseIdentifier:cellID4];
+        }
+        cell.textLabel.text = @"还没有评论";
+        cell.textLabel.textAlignment = NSTextAlignmentCenter;
+        
+        return cell;
+    }
+    
+    return nil;
+}
+
+#pragma mark -- UITableViewDelegate
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath{
+    if (indexPath.section == 0) {
+        if ([_dataArray count] > 0) {
+            NSString *text = nil;
+            if (_commentStatu == MyCommentStatusShare) {
+                ShareDetialDataModel *model = _dataArray[indexPath.row];
+                text = model.content;
+            }else if(_commentStatu == MyCommentStatusProduct){
+                CommentListModel *model = _dataArray[indexPath.row];
+                text = model.commentMessage;
+            }else if (_commentStatu == MyCommentStatusDresser){
+                CommentListModel *model = _dataArray[indexPath.row];
+                text = model.commentMessage;
+            }
+            CGSize constraint = CGSizeMake(100.f, 20000.0f);
+            
+            CGSize size = [text boundingRectWithSize:constraint options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:14.f]} context:nil].size;
+            
+            height = MAX(size.height, 50.0f);
+            
+            return height + 40;
+        }else{
+            return 44;
+        }
+    }else{
+        return 0;
+    }
+}
+
+- (CGFloat)tableView:(UITableView *)tableView heightForHeaderInSection:(NSInteger)section{
+    return 32.f;
+}
+
+- (UIView *)tableView:(UITableView *)tableView viewForHeaderInSection:(NSInteger)section{
+    UIView *backView = [[UIView alloc] init];
+    backView.backgroundColor = [UIColor whiteColor];
+    if (section == 0) {
+        NSString *myStr;
+        myStr = [NSString stringWithFormat:@"共%@条评论",_totleDiscussNum];
+        
+        NSMutableAttributedString *str = [[NSMutableAttributedString alloc] initWithString:myStr];
+        [str setAttributes:@{NSForegroundColorAttributeName:[UIColor redColor]} range:NSMakeRange(1, myStr.length - 4)];
+        
+        UILabel *label = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 32)];
+        label.textAlignment = NSTextAlignmentCenter;
+        label.font = [UIFont systemFontOfSize:20.f];
+        [label setAttributedText:str];
+        [backView addSubview:label];
+    }else{
+        if ([_dataArray count] >0) {
+            UILabel *mylabel = [[UILabel alloc] initWithFrame:CGRectMake(0, 0, kScreenWidth, 32)];
+            mylabel.textAlignment = NSTextAlignmentCenter;
+            mylabel.text = @"— 没有更多了哦 —";
+            mylabel.font = [UIFont systemFontOfSize:14.f];
+            [backView addSubview:mylabel];
+        }
+    }
+    
+    UIView *lineView = [[UIView alloc] initWithFrame:CGRectMake(8, 31, kScreenWidth - 8, 1)];
+    lineView.backgroundColor = [UIColor lightGrayColor];
+    [backView addSubview:lineView];
+    
+    UIView *toplineView = [[UIView alloc] initWithFrame:CGRectMake(8, 0, kScreenWidth - 8, 1)];
+    toplineView.backgroundColor = [UIColor lightGrayColor];
+    [backView addSubview:toplineView];
+    
+    return backView;
+}
+
+- (void)didReceiveMemoryWarning {
+    [super didReceiveMemoryWarning];
+    // Dispose of any resources that can be recreated.
+}
+
+/*
+#pragma mark - Navigation
+
+// In a storyboard-based application, you will often want to do a little preparation before navigation
+- (void)prepareForSegue:(UIStoryboardSegue *)segue sender:(id)sender {
+    // Get the new view controller using [segue destinationViewController].
+    // Pass the selected object to the new view controller.
+}
+*/
+
+@end

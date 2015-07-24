@@ -1,0 +1,41 @@
+//
+//  Prefix header
+//
+//  The contents of this file are implicitly included at the beginning of every source file.
+//
+
+#import <Availability.h>
+
+#ifndef __IPHONE_3_0
+#warning "This project uses features only available in iOS SDK 3.0 and later."
+#endif
+
+#ifdef __OBJC__
+    #import <UIKit/UIKit.h>
+    #import <Foundation/Foundation.h>
+    #import "GlobalConfig.h"
+    //#import "UIButton+Block.h"
+    #import "LOVBaseViewController.h"
+    #import "LOVBaseTabViewController.h"
+    #import "UIColor+FPBrandColor.h"
+    #import "UIColor+WebColor.h"
+
+
+//DLog will output like NSLog only when the DEBUG variable is set
+#ifdef DEBUG
+//#   define DLog(fmt, ...) NSLog((@"%s [Line %d] " fmt), __PRETTY_FUNCTION__, __LINE__, ##__VA_ARGS__)
+//A better version of NSLog
+#define NSLog(format, ...) do {                                                                              \
+fprintf(stderr, "<%s : %d> %s\n",                                           \
+[[[NSString stringWithUTF8String:__FILE__] lastPathComponent] UTF8String],  \
+__LINE__, __func__);                                                        \
+(NSLog)((format), ##__VA_ARGS__);                                           \
+fprintf(stderr, "-------\n");                                               \
+} while (0)
+
+#else
+#   define NSLog(...)
+#endif
+
+#endif
+

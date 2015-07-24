@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IDESourceControlProjectFavoriteDictionaryKey</key>
+	<false/>
+	<key>IDESourceControlProjectIdentifier</key>
+	<string>E5BCB834-BF49-442E-870C-5EF721600213</string>
+	<key>IDESourceControlProjectName</key>
+	<string>Love</string>
+	<key>IDESourceControlProjectOriginsDictionary</key>
+	<dict>
+		<key>3280fd5b-ee72-5d47-899b-e4e80c036e66++4756</key>
+		<string>svn://192.168.0.186/client/code</string>
+	</dict>
+	<key>IDESourceControlProjectPath</key>
+<<<<<<< .mine
+	<string>Love.xcodeproj</string>
+=======
+	<string>trunk/Love2-iPhone/Love.xcodeproj</string>
+>>>>>>> .r1422
+	<key>IDESourceControlProjectRelativeInstallPathDictionary</key>
+	<dict>
+		<key>3280fd5b-ee72-5d47-899b-e4e80c036e66++4756</key>
+		<string>../../../..</string>
+	</dict>
+	<key>IDESourceControlProjectRepositoryRootDictionary</key>
+	<dict>
+		<key>3280fd5b-ee72-5d47-899b-e4e80c036e66++4756</key>
+		<string>svn://192.168.0.186</string>
+	</dict>
+	<key>IDESourceControlProjectURL</key>
+	<string>svn://192.168.0.186/client/code/trunk/Love2-iPhone/Love.xcodeproj</string>
+	<key>IDESourceControlProjectVersion</key>
+	<integer>111</integer>
+	<key>IDESourceControlProjectWCCIdentifier</key>
+	<string>3280fd5b-ee72-5d47-899b-e4e80c036e66++4756</string>
+	<key>IDESourceControlProjectWCConfigurations</key>
+	<array>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.subversion</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>3280fd5b-ee72-5d47-899b-e4e80c036e66++4756</string>
+			<key>IDESourceControlWCCName</key>
+			<string>code</string>
+		</dict>
+	</array>
+</dict>
+</plist>
